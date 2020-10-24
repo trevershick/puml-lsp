@@ -1,0 +1,32 @@
+[package]
+name = "puml"
+version = "0.1.0"
+authors = ["Trever Shick <trevershick@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+fluid = "0.4.1"
+nom = "5.1.2"
+nom_locate = "2.0.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+jsonrpc-tcp-server = "15.0"
+log = "0.4.11"
+env_logger = "0.8.1"
+
+# this mess is due to jsonrpc's old ass future impl
+futures01 = { version = "0.1", package = "futures" }
+# TODO remove when we no longer need compat (use jsonrpc-core re-export instead)
+futures03 = { version = "0.3.7", features = ["compat"], package = "futures" }
+
+
+
+lsp_types = { version = "0.76", features = ["proposed"], package="lsp-types" }
+
+tokio = { version = "0.3.1", features = ["full"] }
+tokio-util = {version="0.4.0", "features"=["codec"]}
+bytes = "0.5"
+
