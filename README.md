@@ -1,6 +1,12 @@
 
 # Enabling in NeoVim + Coc
 
+Start the server...
+
+```
+RUST_LOG="trace" cargo run
+```
+
 Run `:CocConfig` and add ...
 
 ```
@@ -15,3 +21,5 @@ Run `:CocConfig` and add ...
   "codeLens.enable": true
 }
 ```
+
+Open a file and chnage the file type with `:set ft=puml`
