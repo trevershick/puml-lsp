@@ -25,7 +25,6 @@ impl Encoder<LspEvent> for LspCodec {
                 buf.put(header.as_bytes());
                 buf.put(m.as_bytes());
             }
-            _ => (),
         }
         Ok(())
     }

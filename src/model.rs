@@ -1,6 +1,17 @@
 use nom_locate::LocatedSpan;
+use nom::AsBytes;
 
 pub type Span<'a> = LocatedSpan<&'a [u8]>;
+
+pub trait ToS {
+    fn to_s(&self) -> String;
+}
+
+impl<'a> ToS for Span<'a> {
+    fn to_s (&self) -> String {
+        String::from_utf8(self.as_bytes().to_vec()).unwrap()
+    }
+}
 
 #[derive(Debug)]
 pub struct Connection<'a> {
@@ -26,6 +37,7 @@ pub struct Participant<'a> {
 #[derive(Debug)]
 pub struct ParticipantDecl<'a> {
     pub pos: Span<'a>,
+    pub name_pos: Span<'a>,
     pub stereotype: String,
     pub participant: Participant<'a>,
 }

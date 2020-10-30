@@ -2,9 +2,9 @@ use super::model;
 
 #[allow(unused_imports)]
 use fluid::prelude::*;
-
+use model::ToS;
 use nom::branch::alt;
-use nom::bytes::complete::{tag, take_while};
+use nom::bytes::complete::{tag, take_while, take_while1};
 use nom::character::complete::{char, space0, space1};
 use nom::character::is_alphabetic;
 use nom::combinator::{map, opt};
@@ -18,6 +18,54 @@ enum PumlLineEvent<'a> {
     ParticipantConnection(model::ParticipantConnection<'a>),
 }
 
+#[derive(Debug)]
+enum PumlObject<'a> {
+    ParticipantType(String, model::Span<'a>),
+    Participant(model::Participant<'a>, model::Span<'a>),
+    Unrecognized(String, model::Span<'a>),
+}
+
+type Statement<'a> = (bool, Vec<PumlObject<'a>>);
+/*enum Statement<'a> {
+    Valid(Vec<PumlObject<'a>>),
+    Invalid(Vec<PumlObject<'a>>),
+}*/
+
+#[allow(dead_code)]
+fn participant_type(input: model::Span) -> IResult<model::Span, PumlObject> {
+    let (input, value) = tag("participant")(input)?;
+    let (input, pos) = position(input)?;
+    Ok((input, PumlObject::ParticipantType(value.to_s(), pos)))
+}
+
+#[allow(dead_code)]
+fn almost_participant_decl(input: model::Span) -> IResult<model::Span, Statement> {
+    let valid = true;
+    let mut stmt = Vec::<PumlObject>::new();
+
+    let (input, _) = space0(input)?;
+    let (input, pt) = participant_type(input)?;
+    stmt.push(pt);
+
+    let (input, _) = opt(space1)(input)?;
+    let (valid, input, waiting_for) = match participant_name(input) {
+        Ok((input, p)) => {
+            let (input, name_pos) = position(input)?;
+            stmt.push(PumlObject::Participant(p, name_pos));
+            (valid, input, None)
+        }
+        Err(_) => (false, input, Some("participant name"))
+    };
+
+    let (input, _trash) = take_while(|ch| ch != 10)(input)?;
+    let (input, _trash_pos) = position(input)?;
+    let (input, _eol) = char('\n')(input)?;
+    if _trash.as_bytes().len() > 0 {
+        stmt.push(PumlObject::Unrecognized(_trash.to_s(), _trash_pos));
+    }
+    Ok((input, (valid, stmt)))
+}
+
 #[allow(dead_code)]
 fn participant_decl(input: model::Span) -> IResult<model::Span, model::ParticipantDecl> {
     let (input, _) = space0(input)?;
@@ -27,13 +75,15 @@ fn participant_decl(input: model::Span) -> IResult<model::Span, model::Participa
     let (input, _) = space1(input)?;
 
     let (input, participant) = participant_name(input)?;
-
+    let (input, name_pos) = position(input)?;
     let (input, _) = space0(input)?;
     let (input, _) = char('\n')(input)?;
+
     Ok((
         input,
         model::ParticipantDecl {
             pos,
+            name_pos,
             stereotype: String::from("participant"),
             participant,
         },
@@ -52,7 +102,7 @@ fn connection_description(input: model::Span) -> IResult<model::Span, String> {
     let (input, _) = char(':')(input)?;
     let (input, _) = space0(input)?;
     let (input, value) = take_while(|ch| ch != 10)(input)?;
-    Ok((input, String::from_utf8(value.as_bytes().to_vec()).unwrap()))
+    Ok((input, value.to_s()))
 }
 
 #[allow(dead_code)]
@@ -86,7 +136,7 @@ fn participant_connection(
 
 fn participant_name(input: model::Span) -> IResult<model::Span, model::Participant> {
     //Alice -> Bob: Authentication Request
-    let (input, value) = take_while(is_alphabetic)(input)?;
+    let (input, value) = take_while1(is_alphabetic)(input)?;
     let (input, pos) = position(input)?;
     // TODO this can't be how this is done
     let name = std::str::from_utf8(value.as_bytes()).unwrap().to_string();
@@ -164,6 +214,38 @@ mod tests {
         participant_decl(model::Span::new(doc)).unwrap();
     }
 
+    #[allow(unused_macros)]
+    macro_rules! extract {
+        ($value: expr, $variant:ident) => {
+            match $value {
+                $variant(a,_) => Some(a),
+                _ => None,
+            }
+        };
+    }
+
+    #[test]
+    fn test_incomplete_participant_decl() {
+        use PumlObject::*;
+        let doc = &b"participant\n"[..];
+        let (_, stmt) = almost_participant_decl(model::Span::new(doc)).unwrap();
+        assert_eq!(stmt.0, false);
+
+        assert_eq!(stmt.1.len(), 1 as usize);
+        assert_eq!("participant", extract!(&stmt.1[0], ParticipantType).unwrap());
+    }
+
+    #[test]
+    fn test_complete_participant_decl() {
+        use PumlObject::*;
+        let doc = &b"participant harry\n"[..];
+        let (_input, stmt) = almost_participant_decl(model::Span::new(doc)).unwrap();
+        assert_eq!(stmt.0, true);
+        assert_eq!(stmt.1.len(), 2 as usize);
+        assert_eq!("participant", extract!(&stmt.1[0], ParticipantType).unwrap());
+        assert_eq!("harry", extract!(&stmt.1[1], Participant).unwrap().name);
+    }
+
     #[test]
     fn test_participant_name() {
         let doc = &b"Alice"[..];
@@ -191,4 +273,5 @@ mod tests {
             _ => {}
         }
     }
+
 }
