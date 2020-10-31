@@ -18,8 +18,6 @@ mod syntax;
 mod lex;
 mod ast;
 mod codec;
-mod model;
-mod parser;
 pub mod server;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -39,4 +37,16 @@ pub(crate) fn parse(text: &str) -> grammar::Parsed {
         errors: Vec::new(),
     }
     .parse()*/
+}
+
+mod tests {
+    #[allow(unused_imports)]
+    use log::*;
+
+    #[test]
+    fn always_returns_ok() {
+        env_logger::init();
+        let text = "a";
+        let root = crate::parse(text).root();
+    }
 }

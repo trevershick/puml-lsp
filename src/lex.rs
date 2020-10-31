@@ -8,11 +8,11 @@ use rowan::SmolStr;
 /// as the lexer token (which is internally a u16)
 impl From<SyntaxKind> for m_lexer::TokenKind {
     fn from(kind: SyntaxKind) -> m_lexer::TokenKind {
-        trace!(
-            "SyntaxKind {:?} to m_lexer::TokenKind {:?}",
-            kind,
-            kind.to_u16()
-        );
+        //trace!(
+        //    "SyntaxKind {:?} to m_lexer::TokenKind {:?}",
+        //    kind,
+        //    kind.to_u16()
+        //);
         m_lexer::TokenKind(kind.to_u16().unwrap())
     }
 }

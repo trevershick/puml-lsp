@@ -1,59 +1,129 @@
-use jsonrpc_tcp_server::jsonrpc_core::IoHandler;
-use jsonrpc_tcp_server::jsonrpc_core::Params;
+use crate::grammar::Parsed;
+use jsonrpc_tcp_server::jsonrpc_core::{IoHandler, Params, RpcMethodSimple, RpcNotificationSimple};
 use log::*;
 use std::default::Default;
+use std::sync::{Arc, Mutex, RwLock};
 use tokio::net::TcpListener;
+use tokio::sync::watch;
+
 
 #[allow(unused_imports)]
 use std::net::SocketAddr;
 
+type SerializedResponse =  std::result::Result<serde_json::Value, jsonrpc_tcp_server::jsonrpc_core::Error>;
+fn serialized_response<T: serde::Serialize>(
+    response: T,
+) -> SerializedResponse {
+    serde_json::to_value(response).map_err(|e| {
+        error!("Serialization error: {}", e);
+        jsonrpc_tcp_server::jsonrpc_core::Error::new(
+            jsonrpc_tcp_server::jsonrpc_core::ErrorCode::InternalError,
+        )
+    })
+}
+trait Serializable {
+    fn serialize(&self) -> SerializedResponse;
+}
+
+impl Serializable for serde_json::Value {
+    fn serialize(&self) -> SerializedResponse {
+        serialized_response(self)
+    }
+}
+
+mod advice {
+    fn disconnected_participants() {
+        // find any participants that have no connectsion
+    }
+}
+
+type ReadWriteGuarded<T> = Arc<RwLock<Option<T>>>;
+fn empty<T>() -> ReadWriteGuarded<T> {
+    Arc::new(RwLock::new(None))
+}
+
+
+mod events {
+    #[derive(Default)]
+    pub(crate) struct Events {
+        
+    }
+
+    impl Events {
+        fn fireDocumentUpdated(event: DocumentUpdated) {}
+    }
+
+    pub(crate) struct DocumentUpdated {
+        uri: String,
+        content: String,
+    }
+
+    #[derive(Debug,Clone)]
+    pub enum Event {
+    }
+}
+
+
+
 pub struct PlantUmlLanguageServer {
     address: String,
+    parsed: Arc<RwLock<Option<Parsed>>>,
+    handler: Arc<IoHandler<()>>,
+    bus: (tokio::sync::broadcast::Sender<events::Event>, tokio::sync::broadcast::Receiver<events::Event>)
 }
-fn serialized_response<T: serde::Serialize>(response: T) -> std::result::Result<serde_json::Value, jsonrpc_tcp_server::jsonrpc_core::Error > 
-{
-    serde_json::to_value(response).map_err(|e| { 
-        error!("Serialization error: {}", e);
-                jsonrpc_tcp_server::jsonrpc_core::Error::new(
-                    jsonrpc_tcp_server::jsonrpc_core::ErrorCode::InternalError,
-                )
-    })
+
+fn onHello(_params: Params) ->SerializedResponse {
+    serde_json::Value::String("hello".to_string()).serialize()
 }
 
 impl PlantUmlLanguageServer {
-    pub fn new(address: &str) -> Self {
-        PlantUmlLanguageServer {
-            address: address.to_owned(),
-        }
-    }
 
-    pub async fn start(&mut self) -> super::Result<()> {
-        let mut io = IoHandler::<()>::default();
+
+    pub fn new(address: &str) -> Self {
+        let parsed: ReadWriteGuarded<Parsed> = empty();
+        let mut handler = IoHandler::<()>::default();
+        let events = events::Events{};
+
+        let plock = parsed.clone();
         info!("Registering rpc methods");
-        io.add_method("say_hello", |_params| {
-            Ok(jsonrpc_tcp_server::jsonrpc_core::Value::String(
-                "hello".to_owned(),
-            ))
+        handler.add_notification("textDocument/didChange", move |params: Params| {
+            let p = params.parse::<lsp_types::DidChangeTextDocumentParams>();
+            if let Ok(x) = p {
+                let text: String = x.content_changes.iter().next().unwrap().text.to_string();
+                let p = crate::parse(&text);
+                let res = p
+                    .root()
+                    .participant_decls()
+                    .filter_map(|it| it.participant_name())
+                    .map(|it| it.identifier())
+                    .collect::<Vec<_>>();
+                trace!("Participant Names - {:?}", res);
+
+                let mut x = plock.write().unwrap();
+                x.replace(p);
+            }
         });
 
-        io.add_notification("textDocument/didOpen", |params: Params| {
+        handler.add_method("say_hello", onHello);
+
+        handler.add_notification("textDocument/didOpen", |params: Params| {
             let p = params.parse::<lsp_types::DidOpenTextDocumentParams>();
             debug!("textDocument/didOpen {:?}", p);
         });
 
-        io.add_method("textDocument/completion", |params: Params| {
+        handler.add_method("textDocument/completion", |params: Params| {
             debug!("Initialize called");
             let p = params.parse::<lsp_types::CompletionParams>();
             debug!("initialize {:?}", p);
 
-            let item1 = lsp_types::CompletionItem{
+            let item1 = lsp_types::CompletionItem {
                 kind: Some(lsp_types::CompletionItemKind::Struct),
                 label: "Sup???".into(),
                 detail: Some("This is detailed sup".into()),
                 insert_text: Some("INSERT ME".into()),
                 ..Default::default()
             };
-            let response = lsp_types::CompletionList{
+            let response = lsp_types::CompletionList {
                 is_incomplete: false,
                 items: vec![item1],
             };
@@ -61,7 +131,7 @@ impl PlantUmlLanguageServer {
             serialized_response(response)
         });
 
-        io.add_method("initialize", |params: Params| {
+        handler.add_method("initialize", |params: Params| {
             debug!("Initialize called");
             let p = params.parse::<lsp_types::InitializeParams>();
             debug!("initialize {:?}", p);
@@ -91,12 +161,21 @@ impl PlantUmlLanguageServer {
             Ok(response)
         });
 
-        let handler = std::sync::Arc::new(io);
+        PlantUmlLanguageServer {
+            address: address.to_owned(),
+            parsed,
+            handler: Arc::new(handler),
+            bus : tokio::sync::broadcast::channel::<events::Event>(10),
+        }
+    }
+
+    pub async fn start(&self) -> super::Result<()> {
+
         let listener = TcpListener::bind(&self.address).await?;
         println!("listening on {}", &self.address);
         loop {
-            let h = std::sync::Arc::clone(&handler);
             let (socket, _) = listener.accept().await?;
+            let h = self.handler.clone();
             tokio::spawn(async move {
                 debug!("Spawning lsp connection");
                 let l = conn::LspConnection::new(h);

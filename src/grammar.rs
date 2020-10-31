@@ -134,7 +134,14 @@ impl Parser {
                 Statement::Ok
             },
             PARTICIPANT_KW => participant_decl(self),
-            _ => unreachable!(format!("uh oh {:?}", self.current()))
+            _ => {
+                self.start_node(ERROR);
+                self.consume_token();
+                self.finish_node();
+                Statement::Ok
+                // something we can't handle i guess
+                //unreachable!(format!("uh oh {:?}", self.current()))
+            }
         };
         trace!("Finish Statement");
         stmt

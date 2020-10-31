@@ -26,7 +26,7 @@ pub enum SyntaxKind {
 }
 impl From<SyntaxKind> for &str {
     fn from(k: SyntaxKind) -> Self {
-        trace!("from for syntax kind, kind = {:?}", k);
+        //trace!("from for syntax kind, kind = {:?}", k);
         match k {
             SyntaxKind::PARTICIPANT_KW => r"participant",
             SyntaxKind::IDENTIFIER => r"[a-zA-Z][a-zA-Z0-9]*",
