@@ -111,16 +111,20 @@ impl PlantUmlLanguageServer {
             debug!("initialize {:?}", p);
 
             let items = match plock.try_read() {
-                Ok(locked) => locked.as_ref().unwrap().root()
+                Ok(locked) => locked
+                    .as_ref()
+                    .unwrap()
+                    .root()
                     .participant_decls()
                     .filter_map(|it| it.participant_name())
                     .map(|it| lsp_types::CompletionItem {
-                            kind: Some(lsp_types::CompletionItemKind::Struct),
-                            label: it.identifier().to_string(),
-                            //detail: Some("This is detailed sup".into()),
-                            //insert_text: Some(it.identifier
-                            ..Default::default()
-                      }).collect(),
+                        kind: Some(lsp_types::CompletionItemKind::Struct),
+                        label: it.identifier().to_string(),
+                        //detail: Some("This is detailed sup".into()),
+                        //insert_text: Some(it.identifier
+                        ..Default::default()
+                    })
+                    .collect(),
                 Err(_) => vec![],
             };
             let response = lsp_types::CompletionList {
@@ -145,7 +149,7 @@ impl PlantUmlLanguageServer {
                         lsp_types::TextDocumentSyncKind::Full,
                     )),
                     completion_provider: Some(lsp_types::CompletionOptions {
-                        trigger_characters: Some(vec![":".into(), "\"".into()]),
+                        trigger_characters: Some(vec![" ".into()]),
                         resolve_provider: Some(true),
                         ..Default::default()
                     }),
